@@ -1,5 +1,3 @@
-// SERVER.CPP
-
 #include <iostream>
 #include <cstring>
 #include <unistd.h>
@@ -108,6 +106,38 @@ void *handleGame(void *data) {
     GameData *game_data = (GameData *)data;
     char buffer[1024] = {0};
 
+    // Sincronizar a escolha de classes
+    sendToBothClients(game_data->client_socket1, game_data->client_socket2, "Choose your class: 1 for Warrior, 2 for Rogue\n");
+
+    // Receber escolha de classe do primeiro jogador
+    memset(buffer, 0, sizeof(buffer));
+    if (read(game_data->client_socket1, buffer, 1024) <= 0) {
+        std::cerr << "Error reading class choice from client 1." << std::endl;
+        pthread_exit(NULL);
+    }
+    int choice1 = std::stoi(buffer);
+    send(game_data->client_socket1, "Wait for your opponent to choose...\n", 36, 0);
+
+    // Receber escolha de classe do segundo jogador
+    memset(buffer, 0, sizeof(buffer));
+    if (read(game_data->client_socket2, buffer, 1024) <= 0) {
+        std::cerr << "Error reading class choice from client 2." << std::endl;
+        pthread_exit(NULL);
+    }
+    int choice2 = std::stoi(buffer);
+    send(game_data->client_socket2, "Wait for your opponent to choose...\n", 36, 0);
+
+    // Atribuir classes aos jogadores
+    game_data->player1 = (choice1 == 1) ? static_cast<Player*>(new Warrior()) : static_cast<Player*>(new Rogue());
+    game_data->player2 = (choice2 == 1) ? static_cast<Player*>(new Warrior()) : static_cast<Player*>(new Rogue());
+
+    // Confirmar escolhas de classes para ambos os jogadores
+    std::string response1 = "Class chosen: " + std::string((choice1 == 1) ? "Warrior" : "Rogue") + "\n";
+    std::string response2 = "Class chosen: " + std::string((choice2 == 1) ? "Warrior" : "Rogue") + "\n";
+    send(game_data->client_socket1, response1.c_str(), response1.length(), 0);
+    send(game_data->client_socket2, response2.c_str(), response2.length(), 0);
+
+    // Loop principal do jogo
     while (game_data->player1->hp > 0 && game_data->player2->hp > 0) {
         std::cout << "Starting new round." << std::endl;
 
@@ -195,29 +225,6 @@ int main() {
             return -1;
         }
         std::cout << "Player " << i + 1 << " connected!" << std::endl;
-    }
-
-    // Jogadores escolhem classes
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        std::string classMsg = "Choose your class: 1 for Warrior, 2 for Rogue\n";
-        send(client_socket[i], classMsg.c_str(), classMsg.length(), 0);
-        char buffer[1024] = {0};
-        if (read(client_socket[i], buffer, 1024) <= 0) {
-            std::cerr << "Error reading class choice from client." << std::endl;
-            return -1;
-        }
-        int choice = std::stoi(buffer);
-
-        if (i == 0) {  // Primeiro jogador
-            game_data.player1 = (choice == 1) ? static_cast<Player*>(new Warrior()) : static_cast<Player*>(new Rogue());
-        } else {  // Segundo jogador
-            game_data.player2 = (choice == 1) ? static_cast<Player*>(new Warrior()) : static_cast<Player*>(new Rogue());
-        }
-
-        std::string response = "Player chosen with HP: " + std::to_string((i == 0 ? game_data.player1 : game_data.player2)->hp) +
-                               ", Attack: " + std::to_string((i == 0 ? game_data.player1 : game_data.player2)->attack) +
-                               ", Speed: " + std::to_string((i == 0 ? game_data.player1 : game_data.player2)->speed) + "\n";
-        send(client_socket[i], response.c_str(), response.length(), 0);
     }
 
     // Configuração dos dados do jogo
